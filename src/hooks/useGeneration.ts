@@ -19,9 +19,8 @@ export function useGeneration() {
       }));
       setResults(initialResults);
 
-      // Generate all styles in parallel
-      const promises = selectedStyles.map(async (styleId) => {
-        // Set to generating
+      // Generate styles sequentially to avoid API rate limits
+      for (const styleId of selectedStyles) {
         setResults((prev) =>
           prev.map((r) =>
             r.styleId === styleId ? { ...r, status: 'generating' } : r
@@ -49,9 +48,7 @@ export function useGeneration() {
             )
           );
         }
-      });
-
-      await Promise.allSettled(promises);
+      }
       setIsGenerating(false);
     },
     []

@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
 import { GradientButton } from '../components/GradientButton';
+import { SkeletonLoader } from '../components/SkeletonLoader';
 import { useImagePicker } from '../hooks/useImagePicker';
 
 interface Props {
@@ -46,7 +47,15 @@ export function HomeScreen({ navigation }: Props) {
 
           {/* Upload Area */}
           <View style={styles.uploadSection}>
-            {image ? (
+            {isLoading ? (
+              <View style={styles.previewContainer}>
+                <SkeletonLoader
+                  width={280}
+                  height={280}
+                  borderRadius={RADIUS.xl}
+                />
+              </View>
+            ) : image ? (
               <View style={styles.previewContainer}>
                 <Image source={{ uri: image }} style={styles.preview} />
                 <TouchableOpacity

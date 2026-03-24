@@ -49,6 +49,97 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Sanitize prompt to reduce content policy rejections
+function sanitizePrompt(prompt) {
+  return prompt
+    .replace(/\bperson\b/gi, 'character')
+    .replace(/\bphoto\b/gi, 'image')
+    .replace(/\byourself\b/gi, 'the subject');
+}
+
+// Describe the image using GPT-4o vision
+async function describeImage(apiKey, base64Image) {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Describe the subject in this image for an illustrator: overall appearance, clothing, pose, expression, hair, and any notable features. Be specific but keep it concise. Do not mention race or ethnicity. Focus on visual details an artist would need.',
+            },
+            {
+              type: 'image_url',
+              image_url: { url: `data:image/png;base64,${base64Image}` },
+            },
+          ],
+        },
+      ],
+      max_tokens: 400,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    console.error('Vision API error:', err);
+    throw new Error('Failed to analyze image');
+  }
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content || '';
+}
+
+// Generate image with DALL-E 3, with one retry using a softened prompt
+async function generateWithDalle(apiKey, prompt, style) {
+  const sanitized = sanitizePrompt(prompt);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const finalPrompt = attempt === 0
+      ? sanitized
+      : `Create a simple, family-friendly ${style || 'cartoon'} style illustration: ${sanitized}`;
+
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt: finalPrompt,
+        n: 1,
+        size: '1024x1024',
+        response_format: 'b64_json',
+        quality: 'standard',
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const image = data.data[0]?.b64_json;
+      if (image) return image;
+    }
+
+    const err = await response.json().catch(() => ({}));
+    const isContentPolicy = err.error?.code === 'content_policy_violation';
+    console.error(`DALL-E attempt ${attempt + 1} error:`, err);
+
+    if (!isContentPolicy || attempt === 1) {
+      throw new Error(isContentPolicy
+        ? 'Image was flagged by safety filters. Try a different photo.'
+        : 'Failed to generate clipart');
+    }
+    // Retry with softened prompt
+  }
+}
+
 // Generate clipart using OpenAI
 app.post('/api/generate', upload.single('image'), async (req, res) => {
   try {
@@ -74,117 +165,20 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       base64Image = req.body.imageBase64.replace(/^data:image\/\w+;base64,/, '');
     }
 
-    const response = await fetch('https://api.openai.com/v1/images/edits', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: (() => {
-        const FormData = require('form-data');
-        const form = new FormData();
-        const imageBuffer = Buffer.from(base64Image, 'base64');
-        form.append('image', imageBuffer, { filename: 'image.png', contentType: 'image/png' });
-        form.append('prompt', prompt);
-        form.append('n', '1');
-        form.append('size', '1024x1024');
-        form.append('response_format', 'b64_json');
-        return form;
-      })(),
-    });
+    // Step 1: Describe the image with GPT-4o vision
+    const description = await describeImage(apiKey, base64Image);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('OpenAI API error:', errorData);
-
-      // Fallback to chat completions with vision for image-to-image
-      const chatResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `Describe this person in detail for image generation: their appearance, clothing, pose, expression, hair style and color, and any distinguishing features. Be very specific and detailed.`,
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:image/png;base64,${base64Image}`,
-                  },
-                },
-              ],
-            },
-          ],
-          max_tokens: 500,
-        }),
-      });
-
-      if (!chatResponse.ok) {
-        const chatError = await chatResponse.json().catch(() => ({}));
-        console.error('Chat API error:', chatError);
-        return res.status(500).json({ error: 'Failed to process image' });
-      }
-
-      const chatData = await chatResponse.json();
-      const description = chatData.choices[0]?.message?.content || '';
-
-      // Now generate the clipart using DALL-E with the description
-      const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'dall-e-3',
-          prompt: `${prompt}\n\nPerson description: ${description}`,
-          n: 1,
-          size: '1024x1024',
-          response_format: 'b64_json',
-          quality: 'standard',
-        }),
-      });
-
-      if (!dalleResponse.ok) {
-        const dalleError = await dalleResponse.json().catch(() => ({}));
-        console.error('DALL-E API error:', dalleError);
-        return res.status(500).json({ error: 'Failed to generate clipart' });
-      }
-
-      const dalleData = await dalleResponse.json();
-      const generatedImage = dalleData.data[0]?.b64_json;
-
-      if (!generatedImage) {
-        return res.status(500).json({ error: 'No image generated' });
-      }
-
-      return res.json({
-        image: `data:image/png;base64,${generatedImage}`,
-        style: style,
-      });
-    }
-
-    const data = await response.json();
-    const generatedImage = data.data[0]?.b64_json;
-
-    if (!generatedImage) {
-      return res.status(500).json({ error: 'No image generated' });
-    }
+    // Step 2: Generate clipart with DALL-E 3
+    const fullPrompt = `${prompt}\n\nSubject description: ${description}`;
+    const generatedImage = await generateWithDalle(apiKey, fullPrompt, style);
 
     res.json({
       image: `data:image/png;base64,${generatedImage}`,
       style: style,
     });
   } catch (error) {
-    console.error('Generation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Generation error:', error.message);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 

@@ -1,7 +1,7 @@
 import { File, Paths } from 'expo-file-system';
 import { CLIPART_STYLES } from '../constants/styles';
 
-const API_BASE_URL = 'https://clipart.onrender.com';
+const API_BASE_URL = 'https://clipart-1l14.onrender.com';
 
 export async function generateClipart(
   imageUri: string,

@@ -6,13 +6,16 @@ import {
   ScrollView,
   Alert,
   StatusBar,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
-import { COLORS, SPACING, FONTS } from '../constants/theme';
+import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
+import { CLIPART_STYLES } from '../constants/styles';
 import { ResultCard } from '../components/ResultCard';
+import { SkeletonLoader } from '../components/SkeletonLoader';
 import { GradientButton } from '../components/GradientButton';
 import { useGeneration } from '../hooks/useGeneration';
 
@@ -114,15 +117,35 @@ export function GenerationScreen({ navigation, route }: Props) {
           </View>
 
           {/* Results */}
-          {results.map((result) => (
-            <ResultCard
-              key={result.styleId}
-              result={result}
-              onDownload={handleDownload}
-              onShare={handleShare}
-              onRetry={handleRetry}
-            />
-          ))}
+          {results.length > 0
+            ? results.map((result) => (
+                <ResultCard
+                  key={result.styleId}
+                  result={result}
+                  onDownload={handleDownload}
+                  onShare={handleShare}
+                  onRetry={handleRetry}
+                />
+              ))
+            : /* Initial skeleton placeholders before results populate */
+              selectedStyles.map((styleId: string) => {
+                const artStyle = CLIPART_STYLES.find((s) => s.id === styleId);
+                return (
+                  <View key={styleId} style={styles.skeletonCard}>
+                    <View style={styles.skeletonHeader}>
+                      <Text style={styles.skeletonIcon}>
+                        {artStyle?.icon || '?'}
+                      </Text>
+                      <SkeletonLoader
+                        width={100}
+                        height={18}
+                        borderRadius={RADIUS.sm}
+                      />
+                    </View>
+                    <SkeletonLoader height={280} borderRadius={0} />
+                  </View>
+                );
+              })}
         </ScrollView>
 
         {/* Bottom Actions */}
@@ -188,6 +211,28 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: COLORS.success,
     borderRadius: 2,
+  },
+  skeletonCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    marginBottom: SPACING.lg,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  skeletonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.surfaceLight,
+    gap: SPACING.sm,
+  },
+  skeletonIcon: {
+    fontSize: 24,
   },
   bottomActions: {
     position: 'absolute',
