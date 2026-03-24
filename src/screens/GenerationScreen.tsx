@@ -9,7 +9,7 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { COLORS, SPACING, RADIUS, FONTS } from '../constants/theme';
@@ -41,11 +41,28 @@ export function GenerationScreen({ navigation, route }: Props) {
         return;
       }
 
-      const asset = await MediaLibrary.createAssetAsync(uri);
-      await MediaLibrary.createAlbumAsync('ClipArt AI', asset, false);
-      Alert.alert('Saved!', 'Image saved to your gallery in "ClipArt AI" album.');
+      // Copy from cache to a stable location so MediaLibrary can pick it up
+      const filename = `clipart_${Date.now()}.png`;
+      const destFile = new File(Paths.document, filename);
+      const sourceFile = new File(uri);
+      await sourceFile.copy(destFile);
+
+      const asset = await MediaLibrary.createAssetAsync(destFile.uri);
+
+      // Album creation can fail on some devices — don't let it block the save
+      try {
+        await MediaLibrary.createAlbumAsync('ClipArt AI', asset, false);
+      } catch {
+        // Asset is already saved to gallery, album just didn't get created
+      }
+
+      // Clean up the copy
+      try { await destFile.delete(); } catch {}
+
+      Alert.alert('Saved!', 'Image saved to your gallery.');
     } catch (error) {
-      Alert.alert('Error', 'Failed to save image.');
+      console.error('Save error:', error);
+      Alert.alert('Error', 'Failed to save image. Please try sharing instead.');
     }
   }, []);
 
