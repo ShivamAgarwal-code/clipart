@@ -12,7 +12,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryAddUsageDescription": "Allow ClipArt AI to save generated clipart to your photo library."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +25,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "package": "com.degen202.clipart"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -32,6 +36,15 @@
         "projectId": "ab4c3478-789c-4006-a409-09aebcbbe495"
       }
     },
-    "owner": "degen202"
+    "owner": "degen202",
+    "plugins": [
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow ClipArt AI to save generated clipart to your photo library.",
+          "savePhotosPermission": "Allow ClipArt AI to save generated clipart to your photo library."
+        }
+      ]
+    ]
   }
 }

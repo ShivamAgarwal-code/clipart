@@ -35,34 +35,35 @@ export function GenerationScreen({ navigation, route }: Props) {
 
   const handleDownload = useCallback(async (uri: string) => {
     try {
+      // Try MediaLibrary first (works in dev builds)
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Required', 'Please allow access to save images.');
         return;
       }
 
-      // Copy from cache to a stable location so MediaLibrary can pick it up
       const filename = `clipart_${Date.now()}.png`;
       const destFile = new File(Paths.document, filename);
       const sourceFile = new File(uri);
       await sourceFile.copy(destFile);
 
       const asset = await MediaLibrary.createAssetAsync(destFile.uri);
-
-      // Album creation can fail on some devices — don't let it block the save
       try {
         await MediaLibrary.createAlbumAsync('ClipArt AI', asset, false);
-      } catch {
-        // Asset is already saved to gallery, album just didn't get created
-      }
-
-      // Clean up the copy
+      } catch {}
       try { await destFile.delete(); } catch {}
 
       Alert.alert('Saved!', 'Image saved to your gallery.');
-    } catch (error) {
-      console.error('Save error:', error);
-      Alert.alert('Error', 'Failed to save image. Please try sharing instead.');
+    } catch {
+      // Fallback for Expo Go — use share sheet to let user save manually
+      try {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/png',
+          dialogTitle: 'Save your clipart',
+        });
+      } catch {
+        Alert.alert('Error', 'Failed to save image.');
+      }
     }
   }, []);
 
